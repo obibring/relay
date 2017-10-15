@@ -178,7 +178,7 @@ function getRelayFileWriter(baseDir: string) {
         customScalars: {},
         inputFieldWhiteListForFlow: [],
         schemaExtensions,
-        recursionLimitForFlow: 3, //TODO: Expose this option
+        recursionLimitForFlow: 1, //TODO: Expose this option
       },
       onlyValidate,
       schema,
