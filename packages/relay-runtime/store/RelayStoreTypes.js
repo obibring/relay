@@ -12,6 +12,23 @@
 'use strict';
 
 import type {
+  ConcreteScalarField,
+  ConcreteLinkedField,
+  ConcreteFragment,
+  ConcreteSelectableNode,
+  RequestNode,
+  ConcreteOperation,
+} from 'RelayConcreteNode';
+import type {GraphQLTaggedNode} from 'RelayModernGraphQLTag';
+import type {
+  ExecutePayload,
+  PayloadError,
+  UploadableMap,
+} from 'RelayNetworkTypes';
+import type {PayloadData} from 'RelayNetworkTypes';
+import type RelayObservable from 'RelayObservable';
+import type {RecordState} from 'RelayRecordState';
+import type {
   /* $FlowFixMe(>=0.55.0 site=www) This comment suppresses an error found when
    * Flow v0.55 was deployed. To see the error delete this comment and run
    * Flow. */
@@ -24,31 +41,20 @@ import type {
   CUnstableEnvironmentCore,
   Disposable,
   Record,
-} from 'RelayCombinedEnvironmentTypes';
-import type {
-  ConcreteBatch,
-  ConcreteScalarField,
-  ConcreteLinkedField,
-  ConcreteFragment,
-  ConcreteSelectableNode,
-} from 'RelayConcreteNode';
-import type {DataID} from 'RelayInternalTypes';
-import type {GraphQLTaggedNode} from 'RelayModernGraphQLTag';
-import type {PayloadData} from 'RelayNetworkTypes';
-import type {PayloadError, UploadableMap} from 'RelayNetworkTypes';
-import type RelayObservable from 'RelayObservable';
-import type {RecordState} from 'RelayRecordState';
-import type {Variables} from 'RelayTypes';
+} from 'react-relay/classic/environment/RelayCombinedEnvironmentTypes';
+import type {DataID} from 'react-relay/classic/tools/RelayInternalTypes';
+import type {Variables} from 'react-relay/classic/tools/RelayTypes';
 
 type TEnvironment = Environment;
 type TFragment = ConcreteFragment;
 type TGraphQLTaggedNode = GraphQLTaggedNode;
 type TNode = ConcreteSelectableNode;
-type TOperation = ConcreteBatch;
-type TPayload = RelayResponsePayload;
+type TPayload = ExecutePayload;
+type TRequest = RequestNode;
+type TOperation = ConcreteOperation;
 
 export type FragmentMap = CFragmentMap<TFragment>;
-export type OperationSelector = COperationSelector<TNode, TOperation>;
+export type OperationSelector = COperationSelector<TNode, TRequest>;
 export type RelayContext = CRelayContext<TEnvironment>;
 export type Selector = CSelector<TNode>;
 export type Snapshot = CSnapshot<TNode>;
@@ -57,6 +63,7 @@ export type UnstableEnvironmentCore = CUnstableEnvironmentCore<
   TFragment,
   TGraphQLTaggedNode,
   TNode,
+  TRequest,
   TOperation,
 >;
 
@@ -204,8 +211,9 @@ export interface Environment
     TFragment,
     TGraphQLTaggedNode,
     TNode,
-    TOperation,
+    TRequest,
     TPayload,
+    TOperation,
   > {
   /**
    * Apply an optimistic update to the environment. The mutation can be reverted
@@ -244,7 +252,7 @@ export interface Environment
   getStore(): Store,
 
   /**
-   * Returns an Observable of RelayResponsePayload resulting from executing the
+   * Returns an Observable of ExecutePayload resulting from executing the
    * provided Mutation operation, the result of which is then normalized and
    * committed to the publish queue along with an optional optimistic response
    * or updater.
@@ -259,7 +267,7 @@ export interface Environment
     optimisticResponse?: ?Object,
     updater?: ?SelectorStoreUpdater,
     uploadables?: ?UploadableMap,
-  |}): RelayObservable<RelayResponsePayload>,
+  |}): RelayObservable<ExecutePayload>,
 
   /**
    * Checks if the records required to fulfill the given `selector` are in
@@ -345,6 +353,8 @@ export type SelectorStoreUpdater = (
 /**
   * A set of configs that can be used to apply an optimistic update into the
   * store.
+  * TODO: we should probably only expose `storeUpdater` and `source` to the
+  * publish queue.
   */
 export type OptimisticUpdate =
   | {|
@@ -354,6 +364,10 @@ export type OptimisticUpdate =
       selectorStoreUpdater: ?SelectorStoreUpdater,
       operation: OperationSelector,
       response: ?Object,
+    |}
+  | {|
+      source: RecordSource,
+      fieldPayloads?: ?Array<HandleFieldPayload>,
     |};
 
 /**

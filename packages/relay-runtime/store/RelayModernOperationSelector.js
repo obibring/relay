@@ -11,12 +11,14 @@
 
 'use strict';
 
+const RelayConcreteNode = require('RelayConcreteNode');
+
 const {getOperationVariables} = require('RelayConcreteVariables');
 const {ROOT_ID} = require('RelayStoreUtils');
 
-import type {ConcreteBatch} from 'RelayConcreteNode';
+import type {RequestNode, ConcreteOperation} from 'RelayConcreteNode';
 import type {OperationSelector} from 'RelayStoreTypes';
-import type {Variables} from 'RelayTypes';
+import type {Variables} from 'react-relay/classic/tools/RelayTypes';
 
 /**
  * Creates an instance of the `OperationSelector` type defined in
@@ -25,21 +27,28 @@ import type {Variables} from 'RelayTypes';
  * operation, and default values are populated for null values.
  */
 function createOperationSelector(
-  operation: ConcreteBatch,
+  request: RequestNode,
   variables: Variables,
+  operationFromBatch?: ConcreteOperation,
 ): OperationSelector {
+  const operation =
+    operationFromBatch ||
+    (request.kind === RelayConcreteNode.BATCH_REQUEST
+      ? request.requests[0].operation
+      : request.operation);
+
   const operationVariables = getOperationVariables(operation, variables);
   const dataID = ROOT_ID;
   return {
     fragment: {
       dataID,
-      node: operation.fragment,
+      node: request.fragment,
       variables: operationVariables,
     },
-    node: operation,
+    node: request,
     root: {
       dataID,
-      node: operation.query,
+      node: operation,
       variables: operationVariables,
     },
     variables: operationVariables,

@@ -9,11 +9,7 @@
 
 'use strict';
 
-import type {
-  ConcreteFragment,
-  ConcreteBatch,
-  ConcreteRoot,
-} from 'RelayConcreteNode';
+import type {GeneratedNode} from 'RelayConcreteNode';
 
 /**
  * Utilities (custom matchers etc) for Relay "static" tests.
@@ -87,7 +83,7 @@ const RelayModernTestUtils = {
         const warned = calls.filter(args => !args[0]).length;
         return {
           pass: !!warned,
-          message:
+          message: () =>
             `Expected ${negative ? 'not ' : ''}to warn but ` +
             '`warning` received the following calls: ' +
             `${formatActual(calls)}.`,
@@ -113,7 +109,7 @@ const RelayModernTestUtils = {
 
       return {
         pass: !!call,
-        message:
+        message: () =>
           `Expected ${negative ? 'not ' : ''}to warn: ` +
           `${formatExpected(expected)} but ` +
           '`warning` received the following calls: ' +
@@ -130,7 +126,7 @@ const RelayModernTestUtils = {
       }
       return {
         pass,
-        message: 'Expected function to throw a TypeError.',
+        message: () => 'Expected function to throw a TypeError.',
       };
     },
   },
@@ -145,22 +141,39 @@ const RelayModernTestUtils = {
     transforms?: ?Array<{
       transform: (context: GraphQLCompilerContext) => GraphQLCompilerContext,
     }>,
-  ): {[key: string]: ConcreteRoot | ConcreteFragment} {
+  ): {[key: string]: GeneratedNode} {
     const RelayCodeGenerator = require('RelayCodeGenerator');
     const GraphQLCompilerContext = require('GraphQLCompilerContext');
     const RelayParser = require('RelayParser');
     const RelayTestSchema = require('RelayTestSchema');
 
     const ast = RelayParser.parse(RelayTestSchema, text);
-    let context = new GraphQLCompilerContext(RelayTestSchema);
-    context = ast.reduce((ctx, node) => ctx.add(node), context);
-    context = (transforms || []).reduce(
-      (ctx, {transform}) => transform(ctx),
-      context,
-    );
+    let context = new GraphQLCompilerContext(RelayTestSchema).addAll(ast);
+    if (transforms) {
+      context = context.applyTransforms(transforms);
+    }
     const documentMap = {};
-    context.documents().forEach(node => {
-      documentMap[node.name] = RelayCodeGenerator.generate(node);
+    context.forEachDocument(node => {
+      if (node.kind === 'Root') {
+        documentMap[node.name] = RelayCodeGenerator.generate({
+          kind: 'Batch',
+          metadata: node.metadata || {},
+          name: node.name,
+          fragment: buildFragmentForRoot(node),
+          requests: [
+            {
+              kind: 'Request',
+              name: node.name,
+              id: null,
+              text,
+              root: node,
+              argumentDependencies: [],
+            },
+          ],
+        });
+      } else {
+        documentMap[node.name] = RelayCodeGenerator.generate(node);
+      }
     });
     return documentMap;
   },
@@ -168,12 +181,12 @@ const RelayModernTestUtils = {
   /**
    * Compiles the given GraphQL text using the standard set of transforms (as
    * defined in RelayCompiler) and returns a mapping of definition name to
-   * its full runtime representation (roots are wrapped in a ConcreteBatch).
+   * its full runtime representation.
    */
   generateAndCompile(
     text: string,
     schema?: ?GraphQLSchema,
-  ): {[key: string]: ConcreteBatch | ConcreteFragment} {
+  ): {[key: string]: GeneratedNode} {
     const {transformASTSchema} = require('ASTConvert');
     const {generate} = require('RelayCodeGenerator');
     const RelayCompiler = require('RelayCompiler');
@@ -202,5 +215,20 @@ const RelayModernTestUtils = {
     return documentMap;
   },
 };
+
+/**
+ * Construct the fragment equivalent of a root node.
+ */
+function buildFragmentForRoot(root) {
+  return {
+    argumentDefinitions: (root.argumentDefinitions: $FlowIssue),
+    directives: root.directives,
+    kind: 'Fragment',
+    metadata: null,
+    name: root.name,
+    selections: root.selections,
+    type: root.type,
+  };
+}
 
 module.exports = RelayModernTestUtils;

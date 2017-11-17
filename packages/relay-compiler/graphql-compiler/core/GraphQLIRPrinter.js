@@ -222,6 +222,9 @@ function printArguments(args: Array<Argument>): string {
 }
 
 function printValue(value: ArgumentValue, type: ?GraphQLInputType): ?string {
+  if (type instanceof GraphQLNonNull) {
+    type = type.ofType;
+  }
   if (value.kind === 'Variable') {
     return '$' + value.variableName;
   } else if (value.kind === 'ObjectValue') {
@@ -299,4 +302,4 @@ function printLiteral(value: mixed, type: ?GraphQLInputType): string {
   }
 }
 
-module.exports = {print, printField};
+module.exports = {print, printField, printArguments, printDirectives};

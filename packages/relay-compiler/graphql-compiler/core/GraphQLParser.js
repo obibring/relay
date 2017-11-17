@@ -11,8 +11,9 @@
 
 'use strict';
 
+const Profiler = require('./GraphQLCompilerProfiler');
+
 const invariant = require('invariant');
-const partitionArray = require('partitionArray');
 
 const {DEFAULT_HANDLE_KEY} = require('../util/DefaultHandleKey');
 const {
@@ -127,8 +128,10 @@ class GraphQLParser {
     schema: GraphQLSchema,
     definition: OperationDefinitionNode | FragmentDefinitionNode,
   ): Root | Fragment {
-    const parser = new this(schema, definition);
-    return parser.transform();
+    return Profiler.run('GraphQLParser.transform', () => {
+      const parser = new this(schema, definition);
+      return parser.transform();
+    });
   }
 
   constructor(
@@ -398,6 +401,7 @@ class GraphQLParser {
       operation,
       metadata: null,
       name,
+      dependentRequests: [],
       argumentDefinitions,
       directives,
       selections,
@@ -964,6 +968,28 @@ function getName(ast): string {
     ast,
   );
   return name;
+}
+
+/**
+ * Partitions an array given a predicate. All elements satisfying the predicate
+ * are part of the first returned array, and all elements that don't are in the
+ * second.
+ */
+function partitionArray<Tv>(
+  array: Array<Tv>,
+  predicate: (value: Tv, index: number, array: Array<Tv>) => boolean,
+  context?: any,
+): [Array<Tv>, Array<Tv>] {
+  var first = [];
+  var second = [];
+  array.forEach((element, index) => {
+    if (predicate.call(context, element, index, array)) {
+      first.push(element);
+    } else {
+      second.push(element);
+    }
+  });
+  return [first, second];
 }
 
 module.exports = GraphQLParser;

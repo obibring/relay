@@ -4,7 +4,6 @@
  * This source code is licensed under the MIT license found in the
  * LICENSE file in the root directory of this source tree.
  *
- * @providesModule RelayInternalTypes
  * @flow
  * @format
  */
@@ -17,8 +16,10 @@
  * These are types shared across multiple files within Relay internals.
  */
 
-import typeof GraphQLMutatorConstants from 'GraphQLMutatorConstants';
-import type RelayQuery from 'RelayQuery';
+// RANGE_OPERATIONS should be imported from
+// '../legacy/mutation/GraphQLMutatorConstants', but that file is not Flow typed
+
+import type RelayQuery from '../query/RelayQuery';
 
 type AfterConnectionArgumentMap = {
   after: string,
@@ -45,9 +46,9 @@ type InitialTailConnectionArgumentMap = {
 };
 type RangeBehaviorsFunction = (connectionArgs: {
   [argName: string]: CallValue,
-}) => $Keys<GraphQLMutatorConstants.RANGE_OPERATIONS>;
+}) => any; // $Keys<GraphQLMutatorConstants.RANGE_OPERATIONS>;
 type RangeBehaviorsObject = {
-  [key: string]: $Keys<GraphQLMutatorConstants.RANGE_OPERATIONS>,
+  [key: string]: any, // $Keys<GraphQLMutatorConstants.RANGE_OPERATIONS>,
 };
 type TailConnectionArgumentMap = {
   after: string,

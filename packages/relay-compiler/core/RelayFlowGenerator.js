@@ -18,11 +18,6 @@ const nullthrows = require('nullthrows');
 const t = require('babel-types');
 
 const {
-  FlattenTransform,
-  IRVisitor,
-  SchemaUtils,
-} = require('../graphql-compiler/GraphQLCompilerPublic');
-const {
   anyTypeAlias,
   exactObjectTypeAnnotation,
   exportType,
@@ -39,34 +34,34 @@ const {
   transformScalarType,
   transformInputType,
 } = require('./RelayFlowTypeTransformers');
+const {GraphQLNonNull} = require('graphql');
 const {
-  GraphQLNonNull,
-  GraphQLInputObjectType,
-} = require('graphql');
+  FlattenTransform,
+  IRVisitor,
+  Profiler,
+  SchemaUtils,
+} = require('graphql-compiler');
 
-import type {
-  IRTransform,
-  Fragment,
-  Root,
-  CompilerContext,
-} from '../graphql-compiler/GraphQLCompilerPublic';
 import type {ScalarTypeMapping} from './RelayFlowTypeTransformers';
+import type {IRTransform, Fragment, Root} from 'graphql-compiler';
 import type {GraphQLEnumType} from 'graphql';
 
 const {isAbstractType} = SchemaUtils;
 
 type Options = {|
   +customScalars: ScalarTypeMapping,
+  +useHaste: boolean,
+  +enumsHasteModule: ?string,
+  +existingFragmentNames: Set<string>,
   +inputFieldWhiteList: $ReadOnlyArray<string>,
   +relayRuntimeModule: string,
-  +enumsHasteModule: ?string,
 |};
 
 export type State = {|
   ...Options,
   +generatedTypes: Array<string>,
-  +usedFragments: Set<string>,
   +usedEnums: {[name: string]: GraphQLEnumType},
+  +usedFragments: Set<string>,
 |};
 
 function generate(node: Root | Fragment, options: Options): string {
@@ -232,11 +227,13 @@ function createVisitor(options: Options) {
   const state = {
     customScalars: options.customScalars,
     enumsHasteModule: options.enumsHasteModule,
+    existingFragmentNames: options.existingFragmentNames,
     inputFieldWhiteList: options.inputFieldWhiteList,
     relayRuntimeModule: options.relayRuntimeModule,
     generatedTypes: [],
     usedEnums: {},
     usedFragments: new Set(),
+    useHaste: options.useHaste,
   };
 
   return {
@@ -402,12 +399,15 @@ function getFragmentImports(state: State) {
   const imports = [];
   if (state.usedFragments.size > 0) {
     imports.push(importTypes(['FragmentReference'], state.relayRuntimeModule));
-    // TODO: test for existance of the referenced fragment and generate
-    // import type if the fragment exist (it might not exist in compat mode).
     const usedFragments = Array.from(state.usedFragments).sort();
     for (const usedFragment of usedFragments) {
-      imports.push(anyTypeAlias(usedFragment));
-      // importTypes([includedSpreadType], includedSpreadType + '.graphql')
+      if (state.useHaste && state.existingFragmentNames.has(usedFragment)) {
+        // TODO(T22653277) support non-haste environments when importing
+        // fragments
+        imports.push(importTypes([usedFragment], usedFragment + '.graphql'));
+      } else {
+        imports.push(anyTypeAlias(usedFragment));
+      }
     }
   }
   return imports;
@@ -436,10 +436,10 @@ function getEnumDefinitions({enumsHasteModule, usedEnums}: State) {
 
 const FLOW_TRANSFORMS: Array<IRTransform> = [
   RelayMaskTransform.transform,
-  (ctx: CompilerContext) => FlattenTransform.transform(ctx, {}),
+  FlattenTransform.transformWithOptions({}),
 ];
 
 module.exports = {
-  generate,
+  generate: Profiler.instrument(generate, 'RelayFlowGenerator.generate'),
   flowTransforms: FLOW_TRANSFORMS,
 };

@@ -14,14 +14,14 @@ jest.mock('warning');
 
 require('configureForRelayOSS');
 
-const QueryBuilder = require('QueryBuilder');
+const QueryBuilder = require('../QueryBuilder');
 const RelayClassic = require('RelayClassic');
-const RelayFragmentReference = require('RelayFragmentReference');
-const RelayMetaRoute = require('RelayMetaRoute');
-const RelayQuery = require('RelayQuery');
+const RelayFragmentReference = require('../RelayFragmentReference');
+const RelayMetaRoute = require('../../route/RelayMetaRoute');
+const RelayQuery = require('../RelayQuery');
 const RelayTestUtils = require('RelayTestUtils');
 
-const {getClassicFragment, graphql} = require('RelayGraphQLTag');
+const {getClassicFragment, graphql} = require('../RelayGraphQLTag');
 
 describe('RelayQuery', () => {
   const {getNode} = RelayTestUtils;
@@ -599,7 +599,7 @@ describe('RelayQuery', () => {
 
     it('expands fragment spreads with literal variables', () => {
       const fragments = {
-        foo: graphql.experimental`
+        foo: graphql`
           fragment RelayQuery_foo on User
             @argumentDefinitions(
               size: {type: "Int"}

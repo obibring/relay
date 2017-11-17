@@ -34,19 +34,22 @@ describe('RelayFlowGenerator', () => {
       const context = new GraphQLCompilerContext(RelayTestSchema).addAll(
         definitions,
       );
-      const flowContext = RelayFlowGenerator.flowTransforms.reduce(
-        (ctx, transform) => transform(ctx, schema),
-        context,
+      const flowContext = context.applyTransforms(
+        RelayFlowGenerator.flowTransforms,
+        schema,
       );
       return flowContext
         .documents()
         .map(doc =>
           RelayFlowGenerator.generate(doc, {
             customScalars: {},
+            enumsHasteModule: null,
+            existingFragmentNames: new Set(),
             inputFieldWhiteList: [],
             recursionLimit: 3,
             recursiveFields: ['feedback', 'comment'],
             relayRuntimeModule: 'relay-runtime',
+            useHaste: false,
           }),
         )
         .join('\n\n');

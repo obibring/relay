@@ -14,15 +14,20 @@
 const FindGraphQLTags = require('../codegen/FindGraphQLTags');
 const GraphQL = require('graphql');
 
-const chalk = require('chalk');
 const fs = require('fs');
 const invariant = require('invariant');
 const path = require('path');
 
-const {ASTCache} = require('../graphql-compiler/GraphQLCompilerPublic');
+const {ASTCache, Profiler} = require('graphql-compiler');
 
-import type {File, FileFilter} from '../graphql-compiler/GraphQLCompilerPublic';
+import type {File, FileFilter} from 'graphql-compiler';
 import type {DocumentNode} from 'graphql';
+
+const parseGraphQL = Profiler.instrument(GraphQL.parse, 'GraphQL.parse');
+
+const FIND_OPTIONS = {
+  validateNames: true,
+};
 
 // Throws an error if parsing the file fails
 function parseFile(baseDir: string, file: File): ?DocumentNode {
@@ -40,31 +45,15 @@ function parseFile(baseDir: string, file: File): ?DocumentNode {
     text,
     baseDir,
     file,
-  ).forEach(({tag, template}) => {
-    if (!(tag === 'graphql' || tag === 'graphql.experimental')) {
-      throw new Error(
-        `Invalid tag ${tag} in ${file.relPath}. Expected graphql\`\`.`,
-      );
-    }
-
-    if (tag === 'graphql.experimental') {
-      console.warn(
-        chalk.yellow(
-          'DEPRECATED: graphql.experimental`...` usage should be replaced ' +
-            `with graphql\`...\` in "${file.relPath}". No other changes are ` +
-            'needed. graphql.experimental will be removed in a future version.',
-        ),
-      );
-    }
-
-    const ast = GraphQL.parse(new GraphQL.Source(template, file.relPath));
+    FIND_OPTIONS,
+  ).forEach(template => {
+    const ast = parseGraphQL(new GraphQL.Source(template, file.relPath));
     invariant(
       ast.definitions.length,
       'RelayJSModuleParser: Expected GraphQL text to contain at least one ' +
         'definition (fragment, mutation, query, subscription), got `%s`.',
       template,
     );
-
     astDefinitions.push(...ast.definitions);
   });
 

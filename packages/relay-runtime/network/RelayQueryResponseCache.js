@@ -12,10 +12,10 @@
 'use strict';
 
 const invariant = require('invariant');
-const stableJSONStringify = require('stableJSONStringify');
+const stableCopy = require('stableCopy');
 
 import type {GraphQLResponse} from 'RelayNetworkTypes';
-import type {Variables} from 'RelayTypes';
+import type {Variables} from 'react-relay/classic/tools/RelayTypes';
 
 type Response = {
   fetchTime: number,
@@ -83,7 +83,7 @@ class RelayQueryResponseCache {
 }
 
 function getCacheKey(queryID: string, variables: Variables): string {
-  return stableJSONStringify({queryID, variables});
+  return JSON.stringify(stableCopy({queryID, variables}));
 }
 
 /**

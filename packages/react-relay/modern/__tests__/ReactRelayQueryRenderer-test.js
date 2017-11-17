@@ -11,17 +11,18 @@
 'use strict';
 
 const React = require('React');
-const ReactRelayPropTypes = require('ReactRelayPropTypes');
-const ReactRelayQueryRenderer = require('ReactRelayQueryRenderer');
+const ReactRelayPropTypes = require('../ReactRelayPropTypes');
+const ReactRelayQueryRenderer = require('../ReactRelayQueryRenderer');
 const ReactTestRenderer = require('ReactTestRenderer');
-const RelayInMemoryRecordSource = require('RelayInMemoryRecordSource');
-const RelayMarkSweepStore = require('RelayMarkSweepStore');
-const RelayModernEnvironment = require('RelayModernEnvironment');
-const RelayNetwork = require('RelayNetwork');
-
-const simpleClone = require('simpleClone');
 
 const {createMockEnvironment} = require('RelayModernMockEnvironment');
+const {
+  Environment,
+  Network,
+  RecordSource,
+  Store,
+  simpleClone,
+} = require('RelayRuntime');
 
 describe('ReactRelayQueryRenderer', () => {
   let TestQuery;
@@ -31,6 +32,16 @@ describe('ReactRelayQueryRenderer', () => {
   let render;
   let store;
   let variables;
+
+  const response = {
+    data: {
+      node: {
+        __typename: 'User',
+        id: '4',
+        name: 'Zuck',
+      },
+    },
+  };
 
   class PropsSetter extends React.Component {
     constructor() {
@@ -84,24 +95,6 @@ describe('ReactRelayQueryRenderer', () => {
   });
 
   describe('when initialized', () => {
-    it('retains the initial selection', () => {
-      ReactTestRenderer.create(
-        <ReactRelayQueryRenderer
-          query={TestQuery}
-          cacheConfig={cacheConfig}
-          environment={environment}
-          render={render}
-          variables={variables}
-        />,
-      );
-      expect(environment.retain).toBeCalled();
-      expect(environment.retain.mock.calls[0][0].dataID).toBe('client:root');
-      expect(environment.retain.mock.calls[0][0].node).toBe(TestQuery.query);
-      expect(environment.retain.mock.calls[0][0].variables).toEqual(variables);
-      const dispose = environment.retain.mock.dispose;
-      expect(dispose).not.toBeCalled();
-    });
-
     it('fetches the query', () => {
       ReactTestRenderer.create(
         <ReactRelayQueryRenderer
@@ -151,19 +144,10 @@ describe('ReactRelayQueryRenderer', () => {
     });
 
     it('skip loading state when request could be resolved synchronously', () => {
-      const response = {
-        data: {
-          node: {
-            __typename: 'User',
-            id: '4',
-            name: 'Zuck',
-          },
-        },
-      };
       const fetch = () => response;
-      store = new RelayMarkSweepStore(new RelayInMemoryRecordSource());
-      environment = new RelayModernEnvironment({
-        network: RelayNetwork.create(fetch),
+      store = new Store(new RecordSource());
+      environment = new Environment({
+        network: Network.create(fetch),
         store,
       });
       ReactTestRenderer.create(
@@ -193,9 +177,9 @@ describe('ReactRelayQueryRenderer', () => {
     it('skip loading state when request failed synchronously', () => {
       const error = new Error('Mock Network Error');
       const fetch = () => error;
-      store = new RelayMarkSweepStore(new RelayInMemoryRecordSource());
-      environment = new RelayModernEnvironment({
-        network: RelayNetwork.create(fetch),
+      store = new Store(new RecordSource());
+      environment = new Environment({
+        network: Network.create(fetch),
         store,
       });
       ReactTestRenderer.create(
@@ -218,7 +202,6 @@ describe('ReactRelayQueryRenderer', () => {
   describe('context', () => {
     let ContextGetter;
     let relayContext;
-    let response;
 
     beforeEach(() => {
       ContextGetter = class extends React.Component {
@@ -236,15 +219,6 @@ describe('ReactRelayQueryRenderer', () => {
         relay: ReactRelayPropTypes.Relay,
       };
       render = jest.fn(() => <ContextGetter />);
-      response = {
-        data: {
-          node: {
-            __typename: 'User',
-            id: '4',
-            name: 'Zuck',
-          },
-        },
-      };
     });
 
     it('sets an environment and variables on context', () => {
@@ -631,10 +605,11 @@ describe('ReactRelayQueryRenderer', () => {
       );
     });
 
-    it('continues retaining the initial selection', () => {
+    it('does not retain until the first response', () => {
       expect.assertions(1);
+      render.mockClear();
       environment.mock.reject(TestQuery, new Error('fail'));
-      expect(environment.retain.mock.dispose).not.toBeCalled();
+      expect(environment.retain).not.toBeCalled();
     });
 
     it('renders the error and retry', () => {
@@ -666,15 +641,6 @@ describe('ReactRelayQueryRenderer', () => {
       }).toBeRendered();
 
       render.mockClear();
-      const response = {
-        data: {
-          node: {
-            __typename: 'User',
-            id: '4',
-            name: 'Zuck',
-          },
-        },
-      };
       environment.mock.resolve(TestQuery, response);
       expect({
         error: null,
@@ -693,8 +659,6 @@ describe('ReactRelayQueryRenderer', () => {
   });
 
   describe('when the fetch succeeds', () => {
-    let response;
-
     beforeEach(() => {
       ReactTestRenderer.create(
         <ReactRelayQueryRenderer
@@ -704,15 +668,13 @@ describe('ReactRelayQueryRenderer', () => {
           variables={variables}
         />,
       );
-      response = {
-        data: {
-          node: {
-            __typename: 'User',
-            id: '4',
-            name: 'Zuck',
-          },
-        },
-      };
+    });
+
+    it('retains the result', () => {
+      expect.assertions(2);
+      environment.mock.resolve(TestQuery, response);
+      expect(environment.retain).toBeCalled();
+      expect(environment.retain.mock.dispose).not.toBeCalled();
     });
 
     it('publishes and notifies the store with changes', () => {
@@ -800,17 +762,22 @@ describe('ReactRelayQueryRenderer', () => {
     });
 
     it('releases the pending selection', () => {
+      environment.mock.resolve(TestQuery, response);
       const disposeHold = environment.retain.mock.dispose;
       expect(disposeHold).not.toBeCalled();
       instance.getInstance().setProps(nextProps);
+      environment.mock.resolve(NextQuery, response);
       expect(disposeHold).toBeCalled();
     });
 
     it('retains the new selection', () => {
       environment.mockClear();
       instance.getInstance().setProps(nextProps);
+      environment.mock.resolve(NextQuery, response); // trigger retain
       expect(environment.retain.mock.calls[0][0].dataID).toBe('client:root');
-      expect(environment.retain.mock.calls[0][0].node).toBe(NextQuery.query);
+      expect(environment.retain.mock.calls[0][0].node).toBe(
+        NextQuery.operation,
+      );
       expect(environment.retain.mock.calls[0][0].variables).toEqual(variables);
     });
 
@@ -827,6 +794,7 @@ describe('ReactRelayQueryRenderer', () => {
     it('renders if the `query` prop changes to null', () => {
       const subscription = environment.execute.mock.subscriptions[0];
       expect(subscription.closed).toBe(false);
+      environment.mock.resolve(TestQuery, response); // trigger retain
       const disposeHold = environment.retain.mock.dispose;
       expect(disposeHold).not.toBeCalled();
 
@@ -905,15 +873,17 @@ describe('ReactRelayQueryRenderer', () => {
       expect.assertions(5);
       environment.mockClear();
       instance.getInstance().setProps(nextProps);
-      expect(environment.retain.mock.calls.length).toBe(1);
-      expect(environment.retain.mock.calls[0][0].dataID).toBe('client:root');
-      expect(environment.retain.mock.calls[0][0].node).toBe(NextQuery.query);
-      expect(environment.retain.mock.calls[0][0].variables).toEqual(variables);
       environment.mock.resolve(NextQuery, {
         data: {
           node: null,
         },
       });
+      expect(environment.retain.mock.calls.length).toBe(1);
+      expect(environment.retain.mock.calls[0][0].dataID).toBe('client:root');
+      expect(environment.retain.mock.calls[0][0].node).toBe(
+        NextQuery.operation,
+      );
+      expect(environment.retain.mock.calls[0][0].variables).toEqual(variables);
       expect(environment.retain.mock.dispose).not.toBeCalled();
     });
 
@@ -930,15 +900,6 @@ describe('ReactRelayQueryRenderer', () => {
       expect.assertions(2);
       environment.mockClear();
       instance.getInstance().setProps(nextProps);
-      const response = {
-        data: {
-          node: {
-            __typename: 'User',
-            id: '4',
-            name: 'Zuck',
-          },
-        },
-      };
       environment.mock.resolve(NextQuery, response);
       expect(store.publish).toBeCalled();
       expect(store.notify).toBeCalled();
@@ -1011,15 +972,17 @@ describe('ReactRelayQueryRenderer', () => {
       const prevDispose = environment.retain.mock.dispose;
       environment.mockClear();
       instance.getInstance().setProps(nextProps);
-      expect(environment.retain).toBeCalled();
-      expect(environment.retain.mock.calls[0][0].dataID).toBe('client:root');
-      expect(environment.retain.mock.calls[0][0].node).toBe(NextQuery.query);
-      expect(environment.retain.mock.calls[0][0].variables).toEqual(variables);
       environment.mock.resolve(NextQuery, {
         data: {
           node: null,
         },
       });
+      expect(environment.retain).toBeCalled();
+      expect(environment.retain.mock.calls[0][0].dataID).toBe('client:root');
+      expect(environment.retain.mock.calls[0][0].node).toBe(
+        NextQuery.operation,
+      );
+      expect(environment.retain.mock.calls[0][0].variables).toEqual(variables);
       expect(prevDispose).toBeCalled();
       expect(environment.retain.mock.dispose).not.toBeCalled();
     });
@@ -1038,15 +1001,6 @@ describe('ReactRelayQueryRenderer', () => {
       expect.assertions(2);
       environment.mockClear();
       instance.getInstance().setProps(nextProps);
-      const response = {
-        data: {
-          node: {
-            __typename: 'User',
-            id: '4',
-            name: 'Zuck',
-          },
-        },
-      };
       environment.mock.resolve(NextQuery, response);
       expect(store.publish).toBeCalled();
       expect(store.notify).toBeCalled();
@@ -1063,12 +1017,11 @@ describe('ReactRelayQueryRenderer', () => {
           variables={variables}
         />,
       );
-      const dispose = environment.retain.mock.dispose;
-      expect(dispose).not.toBeCalled();
+      expect(environment.retain).not.toBeCalled();
       // TODO: Tell React to unmount instead of manually calling the lifecycle
       // hook.
       instance.getInstance().componentWillUnmount();
-      expect(dispose).toBeCalled();
+      expect(environment.retain).not.toBeCalled();
     });
 
     it('releases its reference if unmounted after fetch completes', () => {
@@ -1080,6 +1033,7 @@ describe('ReactRelayQueryRenderer', () => {
           variables={variables}
         />,
       );
+      environment.mock.resolve(TestQuery, response);
       const dispose = environment.retain.mock.dispose;
       expect(dispose).not.toBeCalled();
       // TODO: Tell React to unmount instead of manually calling the lifecycle
@@ -1103,6 +1057,56 @@ describe('ReactRelayQueryRenderer', () => {
       // hook.
       instance.getInstance().componentWillUnmount();
       expect(subscription.closed).toBe(true);
+    });
+  });
+
+  describe('multiple payloads', () => {
+    let NextQuery;
+    let instance;
+    let nextProps;
+
+    beforeEach(() => {
+      ({NextQuery} = environment.mock.compile(
+        `
+        query NextQuery($id: ID!) {
+          node(id: $id) {
+            ... on User {
+              name
+            }
+          }
+        }
+      `,
+      ));
+
+      instance = ReactTestRenderer.create(
+        <PropsSetter>
+          <ReactRelayQueryRenderer
+            environment={environment}
+            query={TestQuery}
+            render={render}
+            variables={variables}
+          />
+        </PropsSetter>,
+      );
+      nextProps = {
+        environment,
+        query: NextQuery,
+        render,
+        variables,
+      };
+    });
+
+    it('retains partially fulfilled results until next succesful request', () => {
+      environment.mock.nextValue(TestQuery, response);
+      const disposeHold = environment.retain.mock.dispose;
+      expect(environment.retain).toBeCalled();
+      expect(disposeHold).not.toBeCalled();
+      environment.mock.reject(TestQuery, new Error('fail'));
+      expect(disposeHold).not.toBeCalled();
+      instance.getInstance().setProps(nextProps);
+      expect(disposeHold).not.toBeCalled();
+      environment.mock.resolve(NextQuery, response);
+      expect(disposeHold).toBeCalled();
     });
   });
 });

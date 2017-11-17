@@ -17,13 +17,16 @@ const RelayDefaultHandlerProvider = require('RelayDefaultHandlerProvider');
 const RelayInMemoryRecordSource = require('RelayInMemoryRecordSource');
 const RelayPublishQueue = require('RelayPublishQueue');
 
+const invariant = require('invariant');
 const normalizePayload = require('normalizePayload');
 const normalizeRelayPayload = require('normalizeRelayPayload');
 const warning = require('warning');
 
-import type {CacheConfig, Disposable} from 'RelayCombinedEnvironmentTypes';
+const {createOperationSelector} = require('RelayModernOperationSelector');
+
 import type {HandlerProvider} from 'RelayDefaultHandlerProvider';
 import type {
+  ExecutePayload,
   Network,
   PayloadData,
   PayloadError,
@@ -40,9 +43,12 @@ import type {
   Snapshot,
   Store,
   StoreUpdater,
-  RelayResponsePayload,
   UnstableEnvironmentCore,
 } from 'RelayStoreTypes';
+import type {
+  CacheConfig,
+  Disposable,
+} from 'react-relay/classic/environment/RelayCombinedEnvironmentTypes';
 
 export type EnvironmentConfig = {
   configName?: string,
@@ -162,7 +168,7 @@ class RelayModernEnvironment implements Environment {
   }
 
   /**
-   * Returns an Observable of RelayResponsePayload resulting from executing the
+   * Returns an Observable of ExecutePayload resulting from executing the
    * provided Query or Subscription operation, each result of which is then
    * normalized and committed to the publish queue.
    *
@@ -177,27 +183,56 @@ class RelayModernEnvironment implements Environment {
     operation: OperationSelector,
     cacheConfig?: ?CacheConfig,
     updater?: ?SelectorStoreUpdater,
-  }): RelayObservable<RelayResponsePayload> {
-    const {node, variables} = operation;
+  }): RelayObservable<ExecutePayload> {
+    let optimisticResponse;
     return this._network
-      .execute(node, variables, cacheConfig || {})
-      .map(payload =>
-        normalizePayload(
-          node,
-          payload.variables || variables,
-          payload.response,
-        ),
-      )
+      .execute(operation.node, operation.variables, cacheConfig || {})
       .do({
-        next: payload => {
-          this._publishQueue.commitPayload(operation, payload, updater);
-          this._publishQueue.run();
+        next: executePayload => {
+          const responsePayload = normalizePayload(executePayload);
+          const {source, fieldPayloads} = responsePayload;
+          if (executePayload.isOptimistic) {
+            invariant(
+              optimisticResponse == null,
+              'environment.execute: only support one optimistic respnose per ' +
+                'execute.',
+            );
+            optimisticResponse = {
+              source: source,
+              fieldPayloads: fieldPayloads,
+            };
+            this._publishQueue.applyUpdate(optimisticResponse);
+            this._publishQueue.run();
+          } else {
+            if (optimisticResponse) {
+              this._publishQueue.revertUpdate(optimisticResponse);
+              optimisticResponse = undefined;
+            }
+            const writeSelector = createOperationSelector(
+              operation.node,
+              executePayload.variables,
+              executePayload.operation,
+            );
+            this._publishQueue.commitPayload(
+              writeSelector,
+              responsePayload,
+              updater,
+            );
+            this._publishQueue.run();
+          }
         },
+      })
+      .finally(() => {
+        if (optimisticResponse) {
+          this._publishQueue.revertUpdate(optimisticResponse);
+          optimisticResponse = undefined;
+          this._publishQueue.run();
+        }
       });
   }
 
   /**
-   * Returns an Observable of RelayResponsePayload resulting from executing the
+   * Returns an Observable of ExecutePayload resulting from executing the
    * provided Mutation operation, the result of which is then normalized and
    * committed to the publish queue along with an optional optimistic response
    * or updater.
@@ -218,9 +253,7 @@ class RelayModernEnvironment implements Environment {
     optimisticResponse?: ?Object,
     updater?: ?SelectorStoreUpdater,
     uploadables?: ?UploadableMap,
-  |}): RelayObservable<RelayResponsePayload> {
-    const {node, variables} = operation;
-
+  |}): RelayObservable<ExecutePayload> {
     let optimisticUpdate;
     if (optimisticResponse || optimisticUpdater) {
       optimisticUpdate = {
@@ -231,14 +264,7 @@ class RelayModernEnvironment implements Environment {
     }
 
     return this._network
-      .execute(node, variables, {force: true}, uploadables)
-      .map(payload =>
-        normalizePayload(
-          node,
-          payload.variables || variables,
-          payload.response,
-        ),
-      )
+      .execute(operation.node, operation.variables, {force: true}, uploadables)
       .do({
         start: () => {
           if (optimisticUpdate) {
@@ -251,7 +277,11 @@ class RelayModernEnvironment implements Environment {
             this._publishQueue.revertUpdate(optimisticUpdate);
             optimisticUpdate = undefined;
           }
-          this._publishQueue.commitPayload(operation, payload, updater);
+          this._publishQueue.commitPayload(
+            operation,
+            normalizePayload(payload),
+            updater,
+          );
           this._publishQueue.run();
         },
         error: error => {
@@ -284,7 +314,7 @@ class RelayModernEnvironment implements Environment {
     cacheConfig?: ?CacheConfig,
     onCompleted?: ?() => void,
     onError?: ?(error: Error) => void,
-    onNext?: ?(payload: RelayResponsePayload) => void,
+    onNext?: ?(payload: ExecutePayload) => void,
     operation: OperationSelector,
   }): Disposable {
     warning(
@@ -312,7 +342,7 @@ class RelayModernEnvironment implements Environment {
     cacheConfig?: ?CacheConfig,
     onCompleted?: ?() => void,
     onError?: ?(error: Error) => void,
-    onNext?: ?(payload: RelayResponsePayload) => void,
+    onNext?: ?(payload: ExecutePayload) => void,
     operation: OperationSelector,
   }): Disposable {
     warning(
@@ -363,7 +393,7 @@ class RelayModernEnvironment implements Environment {
       // it a value. When switching to use executeMutation(), the next()
       // Observer should be used to preserve behavior.
       onNext: payload => {
-        onCompleted && onCompleted(payload.errors);
+        onCompleted && onCompleted(payload.response.errors);
       },
       onError,
       onCompleted,
@@ -381,7 +411,7 @@ class RelayModernEnvironment implements Environment {
     updater,
   }: {
     onCompleted?: ?(errors: ?Array<PayloadError>) => void,
-    onNext?: ?(payload: RelayResponsePayload) => void,
+    onNext?: ?(payload: ExecutePayload) => void,
     onError?: ?(error: Error) => void,
     operation: OperationSelector,
     updater?: ?SelectorStoreUpdater,

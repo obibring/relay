@@ -4,17 +4,15 @@
  * This source code is licensed under the MIT license found in the
  * LICENSE file in the root directory of this source tree.
  *
- * @providesModule RelayRecord
  * @flow
  * @format
  */
 
 'use strict';
 
-import type GraphQLRange from 'GraphQLRange';
-import type {Call, ClientMutationID, DataID} from 'RelayInternalTypes';
-import type {QueryPath} from 'RelayQueryPath';
-import type {Variables} from 'RelayTypes';
+import type {QueryPath} from '../query/RelayQueryPath';
+import type {Call, ClientMutationID, DataID} from '../tools/RelayInternalTypes';
+import type {Variables} from '../tools/RelayTypes';
 
 export type Record = {
   // Records may contain many other fields as [fieldName: string]: mixed
@@ -24,7 +22,7 @@ export type Record = {
   __mutationIDs__?: Array<ClientMutationID>,
   __mutationStatus__?: string,
   __path__?: QueryPath,
-  __range__?: GraphQLRange,
+  __range__?: any, // GraphQLRange
   __resolvedDeferredFragments__?: {[fragmentID: string]: boolean},
   __resolvedFragmentMapGeneration__?: number,
   __resolvedFragmentMap__?: {[fragmentID: string]: boolean},

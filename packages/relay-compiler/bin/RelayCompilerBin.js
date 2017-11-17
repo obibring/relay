@@ -17,7 +17,7 @@ const {
   CodegenRunner,
   ConsoleReporter,
   WatchmanClient,
-} = require('../graphql-compiler/GraphQLCompilerPublic');
+} = require('graphql-compiler');
 
 const RelayJSModuleParser = require('../core/RelayJSModuleParser');
 const RelayFileWriter = require('../codegen/RelayFileWriter');
@@ -164,25 +164,27 @@ Ensure that one such file exists in ${srcDir} or its parents.
 }
 
 function getRelayFileWriter(baseDir: string) {
-  return (onlyValidate, schema, documents, baseDocuments) =>
+  return (onlyValidate, schema, documents, baseDocuments, reporter) =>
     new RelayFileWriter({
       config: {
-        formatModule: formatGeneratedModule,
+        baseDir,
         compilerTransforms: {
           codegenTransforms,
           fragmentTransforms,
           printTransforms,
           queryTransforms,
         },
-        baseDir,
         customScalars: {},
+        formatModule: formatGeneratedModule,
         inputFieldWhiteListForFlow: [],
         schemaExtensions,
+        useHaste: false,
       },
       onlyValidate,
       schema,
       baseDocuments,
       documents,
+      reporter,
     });
 }
 

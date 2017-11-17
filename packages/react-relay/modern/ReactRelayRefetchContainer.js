@@ -4,7 +4,6 @@
  * This source code is licensed under the MIT license found in the
  * LICENSE file in the root directory of this source tree.
  *
- * @providesModule ReactRelayRefetchContainer
  * @flow
  * @format
  */
@@ -12,33 +11,39 @@
 'use strict';
 
 const React = require('React');
-const RelayProfiler = require('RelayProfiler');
-const RelayPropTypes = require('RelayPropTypes');
+const RelayPropTypes = require('../classic/container/RelayPropTypes');
 
 const areEqual = require('areEqual');
-const buildReactRelayContainer = require('buildReactRelayContainer');
+const buildReactRelayContainer = require('./buildReactRelayContainer');
 const invariant = require('invariant');
-const isRelayContext = require('isRelayContext');
-const isScalarAndEqual = require('isScalarAndEqual');
+const isRelayContext = require('../classic/environment/isRelayContext');
+const isScalarAndEqual = require('../classic/util/isScalarAndEqual');
 const nullthrows = require('nullthrows');
 
-const {profileContainer} = require('ReactRelayContainerProfiler');
-const {getComponentName, getReactComponent} = require('RelayContainerUtils');
-const {Observable} = require('RelayRuntime');
+const {
+  getComponentName,
+  getReactComponent,
+} = require('../classic/container/RelayContainerUtils');
+const {profileContainer} = require('./ReactRelayContainerProfiler');
+const {Observable, RelayProfiler, RelayConcreteNode} = require('RelayRuntime');
 
-import type {
-  GeneratedNodeMap,
-  RefetchOptions,
-  RelayRefetchProp,
-} from 'ReactRelayTypes';
 import type {
   Disposable,
   FragmentSpecResolver,
-} from 'RelayCombinedEnvironmentTypes';
-import type {GraphQLTaggedNode} from 'RelayModernGraphQLTag';
-import type {Subscription} from 'RelayRuntime';
-import type {FragmentMap, RelayContext} from 'RelayStoreTypes';
-import type {Variables} from 'RelayTypes';
+} from '../classic/environment/RelayCombinedEnvironmentTypes';
+import type {Variables} from '../classic/tools/RelayTypes';
+import type {
+  ObserverOrCallback,
+  GeneratedNodeMap,
+  RefetchOptions,
+  RelayRefetchProp,
+} from './ReactRelayTypes';
+import type {
+  FragmentMap,
+  GraphQLTaggedNode,
+  RelayContext,
+  Subscription,
+} from 'RelayRuntime';
 
 type ContainerState = {
   data: {[key: string]: mixed},
@@ -212,7 +217,7 @@ function createContainerWithFragments<
         | Variables
         | ((fragmentVariables: Variables) => Variables),
       renderVariables: ?Variables,
-      callback: ?(error: ?Error) => void,
+      observerOrCallback: ?ObserverOrCallback,
       options: ?RefetchOptions,
     ): Disposable => {
       const {environment, variables: rootVariables} = assertRelayContext(
@@ -227,11 +232,28 @@ function createContainerWithFragments<
         ? {...rootVariables, ...renderVariables}
         : fetchVariables;
       const cacheConfig = options ? {force: !!options.force} : undefined;
+
+      const observer =
+        typeof observerOrCallback === 'function'
+          ? {
+              // callback is not exectued on complete or unsubscribe
+              // for backward compatibility
+              next: observerOrCallback,
+              error: observerOrCallback,
+            }
+          : observerOrCallback || ({}: any);
+
       const {
         createOperationSelector,
-        getOperation,
+        getRequest,
       } = this.context.relay.environment.unstable_internal;
-      const query = getOperation(taggedNode);
+      const query = getRequest(taggedNode);
+      if (query.kind === RelayConcreteNode.BATCH_REQUEST) {
+        throw new Error(
+          'ReactRelayRefetchContainer: Batch request not yet ' +
+            'implemented (T22955000)',
+        );
+      }
       const operation = createOperationSelector(query, fetchVariables);
 
       // Immediately retain the results of the query to prevent cached
@@ -255,7 +277,7 @@ function createContainerWithFragments<
             variables: fragmentVariables,
           };
           this._resolver.setVariables(fragmentVariables);
-          return new Observable(sink =>
+          return Observable.create(sink =>
             this.setState({data: this._resolver.resolve()}, () => {
               sink.next();
               sink.complete();
@@ -270,11 +292,11 @@ function createContainerWithFragments<
           }
         })
         .subscribe({
+          ...observer,
           start: subscription => {
             this._refetchSubscription = refetchSubscription = subscription;
+            observer.start && observer.start(subscription);
           },
-          next: callback,
-          error: callback,
         });
 
       return {

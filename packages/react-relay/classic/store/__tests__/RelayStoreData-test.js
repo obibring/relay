@@ -14,12 +14,13 @@ jest.enableAutomock();
 
 require('configureForRelayOSS');
 
-jest.unmock('GraphQLRange').unmock('GraphQLSegment');
+jest
+  .unmock('../../legacy/store/GraphQLRange')
+  .unmock('../../legacy/store/GraphQLSegment');
 
 const {ConnectionInterface} = require('RelayRuntime');
-const RelayQueryPath = require('RelayQueryPath');
-const RelayStoreData = require('RelayStoreData');
-const RelayGarbageCollector = require('RelayGarbageCollector');
+const RelayQueryPath = require('../../query/RelayQueryPath');
+const RelayStoreData = require('../RelayStoreData');
 const RelayTestUtils = require('RelayTestUtils');
 
 const {CLIENT_MUTATION_ID} = ConnectionInterface.get();
@@ -36,7 +37,7 @@ describe('RelayStoreData', () => {
     // @side-effect related to garbage collection
     RelayClassic = require('RelayClassic');
 
-    RelayQueryTracker = require('RelayQueryTracker');
+    RelayQueryTracker = require('../RelayQueryTracker');
 
     expect.extend(RelayTestUtils.matchers);
   });
@@ -554,51 +555,6 @@ describe('RelayStoreData', () => {
       expect(query.getName()).toBe(node.getName());
       expect(query.isAbstract()).toBe(true);
     });
-  });
-
-  describe('garbage collection', () => {
-    it('initializes the garbage collector if no data has been added', () => {
-      const data = new RelayStoreData();
-      expect(data.getGarbageCollector()).toBe(undefined);
-      expect(() => data.initializeGarbageCollector()).not.toThrow();
-      expect(data.getGarbageCollector() instanceof RelayGarbageCollector).toBe(
-        true,
-      );
-    });
-
-    it('warns if initialized after data has been added', () => {
-      jest.mock('warning');
-
-      const response = {node: {id: '123', __typename: 'User'}};
-      const data = new RelayStoreData();
-      const query = getNode(RelayClassic.QL`query{node(id:"123") {id}}`);
-      data.handleQueryPayload(query, response);
-
-      const warningMsg =
-        'RelayStoreData: Garbage collection can only be initialized when ' +
-        'no data is present.';
-      expect([warningMsg]).toBeWarnedNTimes(0);
-      data.initializeGarbageCollector();
-      expect([warningMsg]).toBeWarnedNTimes(1);
-    });
-
-    it(
-      'registers created dataIDs in the garbage collector if it has been ' +
-        'initialized',
-      () => {
-        RelayGarbageCollector.prototype.register = jest.fn();
-        const response = {node: {id: '123'}};
-        const data = new RelayStoreData();
-        data.initializeGarbageCollector();
-        const query = getNode(RelayClassic.QL`query{node(id:"123") {id}}`);
-        const garbageCollector = data.getGarbageCollector();
-
-        expect(garbageCollector.register).not.toBeCalled();
-        data.handleQueryPayload(query, response);
-        expect(garbageCollector.register).toBeCalled();
-        expect(garbageCollector.register.mock.calls[0][0]).toBe('123');
-      },
-    );
   });
 
   describe('injectQueryTracker()', () => {
