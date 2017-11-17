@@ -58,15 +58,13 @@ const {isAbstractType} = SchemaUtils;
 type Options = {|
   +customScalars: ScalarTypeMapping,
   +inputFieldWhiteList: $ReadOnlyArray<string>,
-  +recursiveFields: $ReadOnlyArray<string>,
-  +recursionLimit: number,
   +relayRuntimeModule: string,
   +enumsHasteModule: ?string,
 |};
 
 export type State = {|
   ...Options,
-  +recursionLevel: number,
+  +generatedTypes: Array<string>,
   +usedFragments: Set<string>,
   +usedEnums: {[name: string]: GraphQLEnumType},
 |};
@@ -236,9 +234,7 @@ function createVisitor(options: Options) {
     enumsHasteModule: options.enumsHasteModule,
     inputFieldWhiteList: options.inputFieldWhiteList,
     relayRuntimeModule: options.relayRuntimeModule,
-    recursiveFields: options.recursiveFields,
-    recursionLimit: options.recursionLimit,
-    recursionLevel: 0,
+    generatedTypes: [],
     usedEnums: {},
     usedFragments: new Set(),
   };
